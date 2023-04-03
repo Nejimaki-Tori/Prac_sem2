@@ -1,0 +1,12 @@
+program
+{
+  int x, y = 0;
+  string s = "asdfghjkl";
+  x = 5 + 3;
+  if (x > 3) write(x) else write(3); /* пример if - else оператора */
+  x = x - 1000;
+  read(s);
+  int k = ( x + y ) / 79; /* приведение типов */
+  write ("ERROR not detected");
+  write("Hello, world!");
+}
