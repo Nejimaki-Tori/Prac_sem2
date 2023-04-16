@@ -3,26 +3,56 @@
 #include <cstdio>
 #include <cctype>
 #include <vector>
+#include <stack>
 #include <algorithm>
+#include <exception>
 
 using namespace std;
 
-enum type_of_lex {
+// для обработки ошибок
+class MyException : public std::exception {
+private:
+    std::string message_;
+public:
+    explicit MyException(const string& message) : message_(message) {}
+
+    const char* what() const noexcept override {
+        return message_.c_str();
+    }
+};
+
+// для обработки ошибок
+class MyCharException : public std::exception {
+private:
+    char c_;
+public:
+    explicit MyCharException(char c) : c_(c) {}
+
+     const char* what() const noexcept override{
+        return "Char exception occurred";
+    }
+
+    char GetChar() const noexcept {
+        return c_;
+    }
+};
+
+
+enum type_of_lex { //все лексемы
     LEX_NULL,                                                                                            /*0*/
-    LEX_AND, LEX_BOOLEAN, LEX_DO, LEX_IF, LEX_FALSE, LEX_INT, LEX_STRING,                                /*7*/
-    LEX_NOT, LEX_OR, LEX_PROGRAM, LEX_READ, LEX_TRUE, LEX_WRITE, LEX_BREAK,                              /*14*/
-    LEX_FIN,                                                                                             /*15*/
-    LEX_SEMICOLON, LEX_COMMA, LEX_COLON, LEX_ASSIGN, LEX_LPAREN, LEX_RPAREN, LEX_EQ, LEX_LSS,            /*23*/
+    LEX_AND, LEX_BOOLEAN, LEX_WHILE, LEX_IF, LEX_ELSE, LEX_FALSE, LEX_INT, LEX_STRING,                   /*8*/
+    LEX_NOT, LEX_OR, LEX_PROGRAM, LEX_READ, LEX_TRUE, LEX_WRITE, LEX_BREAK,                              /*15*/
+    LEX_FIN,                                                                                             /*16*/
+    LEX_SEMICOLON, LEX_COMMA, LEX_ASSIGN, LEX_LPAREN, LEX_RPAREN, LEX_EQ, LEX_LSS,                       /*23*/
     LEX_GTR, LEX_PLUS, LEX_MINUS, LEX_TIMES, LEX_SLASH, LEX_MOD, LEX_LEQ, LEX_NEQ, LEX_GEQ, LEX_LFIG,    /*33*/
     LEX_RFIG,                                                                                            /*34*/
     LEX_NUM,                                                                                             /*35*/
     LEX_STR,                                                                                             /*36*/
     LEX_ID,                                                                                              /*37*/
-    LEX_COM,                                                                                             /*38*/
-    POLIZ_LABEL,                                                                                         /*39*/
-    POLIZ_ADDRESS,                                                                                       /*40*/
-    POLIZ_GO,                                                                                            /*41*/
-    POLIZ_FGO                                                                                            /*42*/
+    POLIZ_LABEL,                                                                                         /*38*/
+    POLIZ_ADDRESS,                                                                                       /*39*/
+    POLIZ_GO,                                                                                            /*40*/
+    POLIZ_FGO                                                                                            /*41*/
 };
 
 /*------------------------------------LEX---------------------------------------------*/
@@ -45,6 +75,22 @@ public:
     friend ostream &operator<<(ostream &s, Lex l);
 };
 
+class LexException : public std::exception {
+public:
+    explicit LexException(const Lex& lex) : lex_(lex) {}
+
+    const char* what() const noexcept override {
+        return "Unexpected lexeme";
+    }
+
+    const Lex& GetLex() const noexcept {
+        return lex_;
+    }
+
+private:
+    const Lex& lex_;
+};
+
 /*------------------------------------Ident-------------------------------------------*/
 
 class Ident {
@@ -57,16 +103,20 @@ public:
     Ident() {
         declare = false;
         assign = false;
+        type = LEX_NULL;
+        value = 0;
     }
 
     bool operator==(const string &s) const {
         return name == s;
     }
 
-    Ident(const string& n) {
+    explicit Ident(const string& n) {
         name = n;
         declare = false;
         assign = false;
+        type = LEX_NULL;
+        value = 0;
     }
 
     string get_name() const {
@@ -108,7 +158,7 @@ public:
 
 /*------------------------------------TID----------------------------------------*/
 
-vector<Ident> TID;
+vector<Ident> TID; //таблица имен
 
 int put(const string &buf) {
     vector<Ident>::iterator k;
@@ -125,7 +175,7 @@ class Scanner {
     FILE *fp;
     char c = ' ';
 
-    int look(const string buf, const char **list) {
+    static int look(const string &buf, const char **list) {
         int i = 0;
         while (list[i]) {
             if (buf == list[i])
@@ -137,39 +187,36 @@ class Scanner {
 
     void gc() {
         if (c != EOF) {
-            c = fgetc(fp);
+            c = char(fgetc(fp));
         }
     }
 
 public:
     static const char *TW[], *TD[];
 
-    Scanner(const char *program) {
+    explicit Scanner(const char *program) {
         if (!(fp = fopen(program, "r")))
-            throw "can’t open file";
+            throw MyException("Can't open file");;
     }
 
     Lex get_lex();
 };
 
 const char *
-        Scanner::TW[] = {"", "and", "boolean", "do", "if", "false", "int", "string",
+        Scanner::TW[] = {"", "and", "boolean", "while", "if", "else", "false", "int", "string",
                          "not", "or", "program", "read", "true", "write",
                          "break", nullptr};
 
 const char *
-        Scanner::TD[] = {"@", ";", ",", ":", "=", "(", ")", "==", "<", ">",
+        Scanner::TD[] = {"@", ";", ",", "=", "(", ")", "==", "<", ">",
                          "+", "-", "*", "/", "%", "<=", "!=", ">=", "{", "}",
                          nullptr};
 
-Lex Scanner::get_lex() {
+Lex Scanner::get_lex() { //получение лексемы
     enum state {
         H, IDENT, NUMB, ALE, STR, COM
     };
     int d, j;
-    bool flag = false;
-    bool flag1 = false;
-    bool flag2 = false;
     string buf;
     string str;
     state CS = H;
@@ -192,14 +239,19 @@ Lex Scanner::get_lex() {
                 } else if (c == '"'){
                     CS = STR;
                 } else if( c == '/'){
-                    flag = true;
-                    CS = COM;
+                    gc();
+                    if (c == '*')
+                        CS = COM;
+                    else {
+                        ungetc(c, fp);
+                        return Lex(LEX_SLASH, 13);
+                    }
                 } else {
                     buf.push_back(c);
                     if ((j = look(buf, TD))) {
                         return Lex((type_of_lex) (j + (int) LEX_FIN), j);
                     } else {
-                        throw c;
+                        throw MyCharException(c);
                     }
                 }
                 break;
@@ -236,7 +288,7 @@ Lex Scanner::get_lex() {
                 }
             case STR:
                 if (c == EOF){
-                    throw "Error brackets";
+                    throw MyException("Error brackets");
                 }
                 if (c == '"'){
                     return Lex(LEX_STR, 0, str);
@@ -245,46 +297,20 @@ Lex Scanner::get_lex() {
                 }
                 break;
             case COM:
-                if (c == '/' && flag2){
-                    return Lex(LEX_COM, 0, str);
-                } else {
-                    if (flag2){
-                        str += '*';
-                        if (c != '*' && c != ' '){
-                            str += c;
-                        }
-                    }
-                    if (c == '/'){
-                        str += c;
-                    }
-                    flag2 = false;
-                }
-                if (flag1 && c != '*' && c != '/'){
-                    str += c;
-                }
-                if (c == '*' && !flag){
-                    flag2 = true;
-                }
-                if (c == '*' && flag){
-                    flag1 = true;
-                    flag = false;
-                } else {
-                    if (flag) {
-                        buf.push_back('/');
-                        if ((j = look(buf, TD))) {
-                            cout << j << endl;
-                            return Lex((type_of_lex) (j + (int) LEX_FIN), j);
-                        } else {
-                            throw c;
-                        }
-                    }
-                }
+                if (c == '*') {
+                    gc();
+                    if (c == '/')
+                        CS = H;
+                    else if (int(c) == EOF)
+                        throw c;
+                } else if (int(c) == EOF)
+                    throw c;
                 break;
         }
     } while (true);
 }
 
-ostream &operator<<(ostream &s, Lex l) {
+ostream &operator<<(ostream &s, Lex l) { //вывод на экран
     string t;
     if (l.t_lex <= LEX_BREAK)
         t = Scanner::TW[l.t_lex];
@@ -296,13 +322,7 @@ ostream &operator<<(ostream &s, Lex l) {
         t = "STR";
         s << '(' << t << ',' << l.v_lex_str << ");" << endl;
         return s;
-    }
-    else if (l.t_lex == LEX_COM) {
-        t = "CMNT";
-        s << '(' << t << ',' << l.v_lex_str << ");" << endl;
-        return s;
-    }
-    else if (l.t_lex == LEX_ID)
+    } else if (l.t_lex == LEX_ID)
         t = TID[l.v_lex].get_name();
     else if (l.t_lex == LEX_LFIG)
         t = "{";
@@ -317,32 +337,361 @@ ostream &operator<<(ostream &s, Lex l) {
     else if (l.t_lex == POLIZ_FGO)
         t = "!F";
     else
-        throw l;
+        throw LexException(l);;
     s << '(' << t << ',' << l.v_lex << ");" << endl;
     return s;
 }
 
-int main() {
-    try {
-        Scanner scan("prog.txt");
-        while (true) {
-            Lex l = scan.get_lex();
-            if (l.get_type() == LEX_FIN) {
-                break;
-            }
-            cout << l;
+class Parser { //семантический анализатор
+    Lex curr_lex;
+    type_of_lex c_type;
+    int c_val;
+    bool flag_block = true, flag_while = false, flag_no_eq = false;
+    Scanner scan;
+    stack<int> st_int;
+    stack<type_of_lex> st_lex;
+    void P();
+    void D1();
+    void D();
+    void O();
+    void O1();
+    void Oor();
+    void Oequasion();
+    void Oand();
+    void Oplus_minus();
+    void Oper();
+    void Operand();
+    void OperMod();
+    void V();
+    void C();
+    void E();
+    void check_id();
+    void eq_bool();
+    void check_id_in_read();
+    void gl() {
+        curr_lex = scan.get_lex();
+        c_type = curr_lex.get_type();
+        c_val = curr_lex.get_value();
+    }
+public:
+    vector<Lex> poliz;
+    explicit Parser(const char* program) : scan(program) {
+        c_type = LEX_NULL;
+        c_val = 0;
+    }
+    void analyze();
+};
+
+void Parser::analyze() { //начало анализа
+    gl();
+    P();
+    if (c_type != LEX_FIN)
+        throw LexException(curr_lex);
+    cout << endl << "YEEEES!!!!!!!!!!!!" << endl;
+}
+
+void Parser::P() { //первая лексема
+    if (c_type == LEX_PROGRAM) {
+        gl();
+    } else throw LexException(curr_lex);
+    if (c_type == LEX_LFIG)
+        gl();
+    else throw LexException(curr_lex);
+    D();
+    O();
+    if (c_type == LEX_RFIG) {
+        gl();
+    } else throw LexException(curr_lex);
+}
+
+void Parser::D() //описания
+{
+    D1();
+    while (c_type == LEX_SEMICOLON) {
+        gl();
+        D1();
+    }
+}
+
+void Parser::D1() //описание
+{
+    if (c_type == LEX_INT or c_type == LEX_STRING or c_type == LEX_BOOLEAN) {
+        gl();
+        V();
+        while (c_type == LEX_COMMA) {
+            gl();
+            V();
         }
     }
-    catch (char c) {
-        cout << "unexpected symbol " << c << endl;
+}
+
+void Parser::V() { //переменная
+    if (c_type == LEX_ID) {
+        gl();
+        if (c_type == LEX_ASSIGN) {
+            gl();
+            C();
+        }
+    } else throw LexException(curr_lex);
+}
+
+void Parser::C() { //константы
+    if (c_type == LEX_PLUS or c_type == LEX_MINUS) {
+        gl();
+        if (c_type == LEX_NUM) {
+            gl();
+        } else if (c_type == LEX_BOOLEAN) {
+            gl();
+        } else throw LexException(curr_lex);
+    } else if (c_type == LEX_NUM) {
+        gl();
+    } else if (c_type == LEX_TRUE || c_type == LEX_FALSE) {
+        gl();
+    } else if (c_type == LEX_STR) {
+        gl();
+    } else throw LexException(curr_lex);
+}
+
+void Parser::O() { //операторы
+    O1();
+    while (flag_block) {
+        O1();
+    }
+}
+
+void Parser::O1() { //один оператор
+    if (c_type == LEX_ID) {
+        gl();
+        if (c_type == LEX_ASSIGN) {
+            gl();
+            check_id();
+            Oor();
+            while (c_type == LEX_ASSIGN) {
+                gl();
+                Oequasion();
+            }
+            if (c_type == LEX_SEMICOLON) {
+                gl();
+            } else throw LexException(curr_lex);
+        } else throw LexException(curr_lex);
+    } else if (c_type == LEX_IF) {
+        flag_no_eq = true;
+        gl();
+        if (c_type == LEX_LPAREN) {
+            gl();
+            Oequasion();
+            eq_bool();
+        } else throw LexException(curr_lex);
+        if (c_type == LEX_RPAREN) {
+            flag_no_eq = false;
+            gl();
+            O1();
+            if (!flag_block) throw LexException(curr_lex);
+        } else throw LexException(curr_lex);
+        if (c_type == LEX_ELSE) {
+            gl();
+            O1();
+            if (!flag_block) throw LexException(curr_lex);
+        } else {
+            throw LexException(curr_lex);
+        }
+    } else if (c_type == LEX_WHILE) {
+        gl();
+        if (c_type == LEX_LPAREN) {
+            gl();
+            Oequasion();
+            eq_bool();
+        } else {
+            throw LexException(curr_lex);
+        }
+        if (c_type == LEX_RPAREN){
+            flag_while = true;
+            gl();
+            O1();
+            flag_while = false;
+            if (flag_block == 0) throw LexException(curr_lex);
+        }
+    } else if (c_type == LEX_READ){
+        flag_no_eq = true;
+        gl();
+        if (c_type == LEX_LPAREN){
+            gl();
+            if (c_type == LEX_ID){
+                check_id_in_read();
+                gl();
+            } else throw LexException(curr_lex);
+            if (c_type == LEX_RPAREN){
+                flag_no_eq = false;
+                gl();
+            } else throw LexException(curr_lex);
+            if (c_type == LEX_SEMICOLON){
+                gl();
+            } else throw LexException(curr_lex);
+        } else throw LexException(curr_lex);
+    } else if (c_type == LEX_WRITE){
+        flag_no_eq = true;
+        gl();
+        if (c_type == LEX_LPAREN){
+            gl();
+            Oequasion();
+            while(c_type == LEX_COMMA){
+                gl();
+                Oequasion();
+            }
+            if (c_type == LEX_RPAREN){
+                flag_no_eq = false;
+                gl();
+            } else throw LexException(curr_lex);
+            if (c_type == LEX_SEMICOLON){
+                gl();
+            } else throw LexException(curr_lex);
+        } else throw LexException(curr_lex);
+    } else if (c_type == LEX_BREAK){
+        if (!flag_while){
+            throw LexException(curr_lex);
+        }
+        gl();
+        if (c_type != LEX_SEMICOLON){
+            throw LexException(curr_lex);
+        } else {
+            gl();
+        }
+    } else if (c_type == LEX_LFIG){
+        gl();
+        O1();
+        flag_block = true;
+        while (c_type != LEX_RFIG){
+            O1();
+            if (!flag_block){
+                break;
+            }
+        }
+        if (c_type == LEX_RFIG){
+            gl();
+        } else throw LexException(curr_lex);
+    } else {
+        flag_block = false;
+    }
+}
+
+void Parser::Oequasion(){ // выражение
+    Oor();
+    while (c_type == LEX_ASSIGN){
+        if (flag_no_eq){
+            throw LexException(curr_lex);
+        }
+        gl();
+        Oor();
+    }
+}
+
+void Parser::Oor(){ // или
+    Oand();
+    while(c_type == LEX_OR){
+        gl();
+        Oand();
+    }
+}
+
+void Parser::Oand(){ // и
+    E();
+    while(c_type == LEX_AND){
+        gl();
+        E();
+    }
+}
+
+void Parser::E(){ //операции
+    Oplus_minus();
+    while (c_type == LEX_NEQ or c_type == LEX_LSS or c_type == LEX_GTR
+           or c_type == LEX_GEQ or c_type == LEX_LEQ or c_type == LEX_EQ){
+        gl();
+        Oplus_minus();
+    }
+}
+
+void Parser::Oplus_minus() { //плюс и минус
+    Oper();
+    while(c_type == LEX_PLUS or c_type == LEX_MINUS){
+        gl();
+        Oper();
+    }
+}
+
+void Parser::Oper(){ //операции умножения и деления
+    OperMod();
+    while (c_type == LEX_SLASH or c_type == LEX_TIMES){
+        gl();
+        OperMod();
+    }
+}
+
+void Parser::OperMod(){ //остаток
+    Operand();
+    while (c_type == LEX_MOD){
+        gl();
+        Operand();
+    }
+}
+
+void Parser::Operand(){ //операнд
+    if (c_type == LEX_PLUS or c_type == LEX_MINUS){
+        gl();
+        if (c_type == LEX_NUM){
+            gl();
+        } else if (c_type == LEX_TRUE || c_type == LEX_FALSE){
+            gl();
+        } else {
+            throw LexException(curr_lex);
+        }
+    } else if (c_type == LEX_ID){
+        check_id();
+        gl();
+    } else if(c_type == LEX_STR){
+        gl();
+    } else if(c_type == LEX_NUM){
+        gl();
+    } else if(c_type == LEX_NOT){
+        gl();
+        Operand();
+    } else if(c_type == LEX_TRUE || c_type == LEX_FALSE){
+        gl();
+    }else if(c_type == LEX_LPAREN){
+        gl();
+        Oequasion();
+        if (c_type == LEX_RPAREN){
+            gl();
+        } else throw LexException(curr_lex);
+    } else throw LexException(curr_lex);
+}
+
+
+void Parser::check_id_in_read() {
+}
+
+void Parser::eq_bool() {
+}
+
+void Parser::check_id() {
+    if (c_type != LEX_ID)
+        return;
+}
+
+int main() {
+    try {
+        Parser pars("prog.txt");
+        pars.analyze();
+    }
+    catch (const MyCharException& e) {
+        cout << e.what() << " symbol: " << e.GetChar() << endl;
         return 1;
     }
-    catch (Lex& l) {
-        cout << "unexpected lexeme" << l << endl;
+    catch (const LexException& e) {
+        cout << e.what() << e.GetLex() << endl;
         return 1;
     }
-    catch (const char *source) {
-        cout << source << endl;
+    catch (const MyException& e) {
+        cout << e.what() << endl;
         return 1;
     }
 }
