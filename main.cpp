@@ -76,7 +76,10 @@ public:
 };
 
 class LexException : public std::exception {
+private:
+    const Lex& lex_;
 public:
+
     explicit LexException(const Lex& lex) : lex_(lex) {}
 
     const char* what() const noexcept override {
@@ -86,9 +89,6 @@ public:
     const Lex& GetLex() const noexcept {
         return lex_;
     }
-
-private:
-    const Lex& lex_;
 };
 
 /*------------------------------------Ident-------------------------------------------*/
@@ -164,9 +164,9 @@ int put(const string &buf) {
     vector<Ident>::iterator k;
 
     if ((k = find(TID.begin(), TID.end(), buf)) != TID.end())
-        return k - TID.begin();
+        return int(k - TID.begin());
     TID.push_back(Ident(buf));
-    return TID.size() - 1;
+    return int(TID.size() - 1);
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -302,9 +302,9 @@ Lex Scanner::get_lex() { //получение лексемы
                     if (c == '/')
                         CS = H;
                     else if (int(c) == EOF)
-                        throw c;
+                        throw MyCharException(c);;
                 } else if (int(c) == EOF)
-                    throw c;
+                    throw MyCharException(c);
                 break;
         }
     } while (true);
@@ -415,7 +415,7 @@ void Parser::D() //описания
 
 void Parser::D1() //описание
 {
-    if (c_type == LEX_INT or c_type == LEX_STRING or c_type == LEX_BOOLEAN) {
+    if (c_type == LEX_INT || c_type == LEX_STRING || c_type == LEX_BOOLEAN) {
         gl();
         V();
         while (c_type == LEX_COMMA) {
@@ -428,6 +428,9 @@ void Parser::D1() //описание
 void Parser::V() { //переменная
     if (c_type == LEX_ID) {
         gl();
+        if (c_type != LEX_ASSIGN && c_type != LEX_SEMICOLON && c_type != LEX_COMMA){
+            throw LexException(curr_lex);
+        }
         if (c_type == LEX_ASSIGN) {
             gl();
             C();
@@ -436,11 +439,9 @@ void Parser::V() { //переменная
 }
 
 void Parser::C() { //константы
-    if (c_type == LEX_PLUS or c_type == LEX_MINUS) {
+    if (c_type == LEX_PLUS || c_type == LEX_MINUS) {
         gl();
         if (c_type == LEX_NUM) {
-            gl();
-        } else if (c_type == LEX_BOOLEAN) {
             gl();
         } else throw LexException(curr_lex);
     } else if (c_type == LEX_NUM) {
@@ -487,13 +488,14 @@ void Parser::O1() { //один оператор
             gl();
             O1();
             if (!flag_block) throw LexException(curr_lex);
+            if (c_type != LEX_ELSE) {
+                //
+            }
         } else throw LexException(curr_lex);
         if (c_type == LEX_ELSE) {
             gl();
             O1();
             if (!flag_block) throw LexException(curr_lex);
-        } else {
-            throw LexException(curr_lex);
         }
     } else if (c_type == LEX_WHILE) {
         gl();
@@ -603,8 +605,8 @@ void Parser::Oand(){ // и
 
 void Parser::E(){ //операции
     Oplus_minus();
-    while (c_type == LEX_NEQ or c_type == LEX_LSS or c_type == LEX_GTR
-           or c_type == LEX_GEQ or c_type == LEX_LEQ or c_type == LEX_EQ){
+    while (c_type == LEX_NEQ || c_type == LEX_LSS || c_type == LEX_GTR
+           || c_type == LEX_GEQ || c_type == LEX_LEQ || c_type == LEX_EQ){
         gl();
         Oplus_minus();
     }
@@ -612,7 +614,7 @@ void Parser::E(){ //операции
 
 void Parser::Oplus_minus() { //плюс и минус
     Oper();
-    while(c_type == LEX_PLUS or c_type == LEX_MINUS){
+    while(c_type == LEX_PLUS || c_type == LEX_MINUS){
         gl();
         Oper();
     }
@@ -620,7 +622,7 @@ void Parser::Oplus_minus() { //плюс и минус
 
 void Parser::Oper(){ //операции умножения и деления
     OperMod();
-    while (c_type == LEX_SLASH or c_type == LEX_TIMES){
+    while (c_type == LEX_SLASH || c_type == LEX_TIMES){
         gl();
         OperMod();
     }
@@ -635,7 +637,7 @@ void Parser::OperMod(){ //остаток
 }
 
 void Parser::Operand(){ //операнд
-    if (c_type == LEX_PLUS or c_type == LEX_MINUS){
+    if (c_type == LEX_PLUS || c_type == LEX_MINUS){
         gl();
         if (c_type == LEX_NUM){
             gl();
