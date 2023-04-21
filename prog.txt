@@ -1,12 +1,24 @@
-program
-{
-  int x, y = 0;
-  string s = "asdfghjkl";
-  x = 5 + 3;
-  if (x > 3) write(x) else write(3); /* пример if - else оператора */
-  x = x - 1000;
-  read(s);
-  int k = ( x + y ) / 79; /* приведение типов */
-  write ("ERROR not detected");
-  write("Hello, world!");
+program{
+int a = 0, b = 5;
+string s;
+boolean t = true;
+a = a % b;
+write("Hello, world!");
+if (a > b) {
+    read(a);
+} else {
+    read(b);
+}
+/* Comment */
+while (t){
+    read(s);
+    {
+       write("While true");
+    }
+    if (t == true){
+        break;
+    } else {
+        write("Ok");
+    }
+}
 }
