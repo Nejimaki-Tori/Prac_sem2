@@ -1,24 +1,18 @@
-program{
-int a = 0, b = 5;
-string s;
+program
+{
+int a = 0, b = -5, c;
 boolean t = true;
-a = a % b;
-write("Hello, world!");
-if (a > b) {
-    read(a);
-} else {
-    read(b);
+string s1 = "a", s2;
+c = a + (b + a * 2);
+a = b = 1;
+if (s1 == s2){
+    write("Ok");
 }
-/* Comment */
-while (t){
-    read(s);
-    {
-       write("While true");
-    }
-    if (t == true){
+while (t == true){
+    if (a > 0 and b == 1){
         break;
-    } else {
-        write("Ok");
     }
+    write("1");
 }
+/* comment */
 }
